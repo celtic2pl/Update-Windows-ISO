@@ -6,10 +6,10 @@
         Using xcopy, PSWindowsUpdate, kbupdate, Dism, 
         And Oscdimg from Assessment and Deployment Kit
     .NOTES
-    Version    : 0.0.2 experimental
+    Version    : 0.0.3 experimental
     Author     : CeLTic
     Created on : 2021-08-19
-	Updated on : 2021-08-29
+	Updated on : 2021-09-02
     License    : GPL3
     Tested on  :
     SW_DVD9_Windows_Svr_Std_and_DataCtr_2012_R2_64Bit_English_-4_MLF_X19-82891
@@ -28,7 +28,7 @@ $OperatingSystem = 'Windows Server 2012 R2'
 $DVD = "D:\"
 $Temp = "C:\Temp"
 $Dism_Temp = "$Temp\Dism"
-$Src_ISO = "$$Temp\Src_ISO"
+$Src_ISO = "$Temp\Src_ISO"
 $Updates = "$Temp\Updates"
 $Final_ISO = "$Temp\ISO"
 $Logs = "$Temp\Logs"
@@ -36,6 +36,8 @@ $Logs = "$Temp\Logs"
 
 $BGColor_Info = 'DarkGreen'
 $BGColor_Warn = 'Red'
+
+$TimeZone = "Central European Standard Time"
 
 $Supported_Systems = @( 'Microsoft Windows Server 2012 R2 Standard',
 'Microsoft Windows Server 2012 R2 Standard Evaluation',
@@ -89,13 +91,11 @@ Write-Host -BackgroundColor $BGColor_Info "Done.`n`n"
 Write-Host -BackgroundColor $BGColor_Warn "This is experiment/experminental version!!!"
 Write-Host -BackgroundColor $BGColor_Warn "You can use it, but it’s at your own risk.!!!`n`n"
 
-#TODO
-#TimeZone ?
-
 Write-Host -BackgroundColor $BGColor_Info "Checking version of powershell..."
 #https://download.microsoft.com/download/6/F/5/6F5FF66C-6775-42B0-86C4-47D41F2DA187/Win8.1AndW2K12R2-KB3191564-x64.msu
 if ($PSVersionTable.PSVersion.Major -ge 5){
-    Write-Host -BackgroundColor $BGColor_Info "Version 5 Found. Continuing"
+    Write-Host -BackgroundColor $BGColor_Info "Version 5 Found. Continuing`n`n"
+	Set-TimeZone $TimeZone
 }
 else {
 	Write-Host -BackgroundColor $BGColor_Warn "Not Found!!!"
@@ -151,7 +151,22 @@ Write-Host -BackgroundColor $BGColor_Info "Installing in background [ADK]`n`n"
 Write-Host -BackgroundColor $BGColor_Info "Copying ISO To Hard Drive..."
 #TODO
 #Copy-ItemWithProgress
-xcopy /E /H $DVD $Src_ISO /Y
+#Get-ChildItem -Path $DVD | Copy-Item -Destination $Src_ISO -Recurse
+#xcopy /E /H $DVD $Src_ISO /Y
+$Files = Get-ChildItem -Path $DVD -Recurse
+$File_Count = $Files.Count
+$i=1
+Foreach ($File in $Files) {
+	Write-Progress -Activity "Copying Files..." -Status "($i of $File_Count) $File" -PercentComplete (($i/$File_Count)*100)
+	$i++
+	$File_Path =  $File.FullName.SubString(2)
+    if ($File.PSIsContainer -eq $True ) {
+		New-Item -Path $Src_ISO$File_Path -Type 'Directory' | Out-Null
+    } else {
+		Copy-Item -Path $File.FullName -Destination $Src_ISO$File_Path
+	}
+}
+Write-Progress -Activity "Copying Files..." -Completed
 Write-Host -BackgroundColor $BGColor_Info "Copying Finished.`n`n"
 
 Write-Host -BackgroundColor $BGColor_Info "Searching For Updates..."
@@ -182,6 +197,7 @@ Write-Host -BackgroundColor $BGColor_Info "Mounting WIM Image..."
 #Searching by Index
 Get-WindowsImage -ImagePath $Src_ISO\sources\install.wim
 #Dism /Mount-Image /ImageFile:$Src_ISO\sources\install.wim  /MountDir:$Dism_Temp /Name:"Windows Server 2012 R2 SERVERSTANDARD"
+Set-ItemProperty -Path $Src_ISO\sources\install.wim -Name IsReadOnly -Value $False
 Mount-WindowsImage -ImagePath $Src_ISO\sources\install.wim -Path $Dism_Temp -Index 2 -LogPath $Logs\Mount_Wim.txt
 Write-Host -BackgroundColor $BGColor_Info "Mounted.`n`n"
 
@@ -189,7 +205,7 @@ Write-Host -BackgroundColor $BGColor_Info "Applying Updates..."
 $i = 1
 ForEach ($File in $Downloaded_Updates){
     Write-Host -BackgroundColor $BGColor_Info "Applying: $i / $Downloaded_Count"
-	Write-Host -BackgroundColor $BGColor_Info "File: $File"
+	#Write-Host -BackgroundColor $BGColor_Info "File: $File"
 	#Get-ChildItem | Select-Object Name, @{Name="Size";Expression={Format-FileSize($_.Length)}}
 	#Write-Host((Get-Item C:\Temp\Updates\$file).length)
 	Get-Item $Updates\$File | Select-Object Name, @{Name="Size";Expression={Format-FileSize($_.Length)}}
